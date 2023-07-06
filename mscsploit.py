@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 from art import tprint
 from colorama import Fore
 
+import threading
 import argparse
 import html
 import os
@@ -96,7 +97,13 @@ def choose_course(courses):
         print('\n[*]Invalid Input\n')
         return choose_course(courses)
 
-def download_lectures(url, folder):
+def download_lectures(link, file_path, new_name):
+    response = requests.get(link, headers=HEADERS)
+    with open(file_path, 'wb') as file:
+            file.write(response.content)
+    print('[*] Downloaded ' + new_name)
+
+def prep_download_lectures(url, folder):
     extension = '.pdf'
     course_page = requests.get(url, headers=HEADERS)
     links = re.findall('<a href="(.*)">.*' + extension + '</a>', course_page.content.decode())
@@ -105,10 +112,13 @@ def download_lectures(url, folder):
     y = 0
     prev_sub_folder = None
     subject_folders_list =[]
+    threads = []
     for x, link in enumerate(links):
         link = link.strip() + extension
         subject_folder = find_subject_folder(names[x] + extension, doc)
         if subject_folder != prev_sub_folder:
+            for thread in threads:
+                thread.join()
             if subject_folder in subject_folders_list:
                 subject_folder = subject_folder + '-extras'
             y = 0
@@ -125,11 +135,14 @@ def download_lectures(url, folder):
         if not os.path.isdir(folder + subject_folder):
             os.makedirs(folder + subject_folder)
             print('\n################ ' + subject_folder + ' ################\n')
-        
-        response = requests.get(link, headers=HEADERS)
-        with open(file_path, 'wb') as file:
-            file.write(response.content)
-        print('[*] Downloaded ' + new_name)
+
+        threads = []
+        threads.append(threading.Thread(target=download_lectures, args=[link,file_path,new_name]))
+        for thread in threads:
+            thread.start()
+    for thread in threads:
+        thread.join()
+
 
 # If not specified, prompt the user to input a folder
          
@@ -164,6 +177,7 @@ def choose_folder():
 # Gets the name of the course from the course number, and makes a folder with that name
 
 def make_course_folder(courses, index, folder):
+    course_name = None
     for course in courses:
         if course[2] == index:
             course_name = course[1]
@@ -181,7 +195,7 @@ def main():
     course_number = choose_course(courses)
     folder = make_course_folder(courses, course_number, folder)
     download_url = 'https://msc-mu.com/courses/' + course_number
-    download_lectures(download_url, folder)
+    prep_download_lectures(download_url, folder)
 
 if __name__ == '__main__':
     print(Fore.CYAN + '#'*54)
